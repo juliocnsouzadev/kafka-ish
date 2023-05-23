@@ -12,6 +12,7 @@ import (
 
 const (
 	mongoUrl = "mongodb://mongo:27017"
+	DbName   = "kafka-ish"
 )
 
 func ConnectToMongoDB() (*mongo.Client, error) {
