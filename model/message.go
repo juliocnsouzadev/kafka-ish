@@ -5,8 +5,8 @@ import (
 )
 
 type Message struct {
-	Id        string    `json:"id"`
-	Topic     string    `json:"topic"`
-	Timestamp time.Time `json:"timestamp"`
-	Content   string    `json:"content"`
+	Id        string    `bson:"_id,omitempty" json:"id,omitempty"`
+	Topic     string    `bson:"topic,omitempty" json:"topic"`
+	Timestamp time.Time `bson:"timestamp,omitempty" timestpajson:"timestamp"`
+	Content   string    `bson:"content,omitempty" json:"content"`
 }
