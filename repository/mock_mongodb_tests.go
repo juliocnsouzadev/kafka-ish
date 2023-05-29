@@ -3,6 +3,7 @@ package repository
 import (
 	"testing"
 
+	"github.com/juliocnsouzadev/kafka-ish/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
@@ -11,8 +12,7 @@ import (
 type OverrideCollection func(*mongo.Collection)
 
 type AssertInsert func(t *testing.T, err error)
-
-type MapModelForMockUpdate func(data any) (bson.D, error)
+type AssertFind[T any] func(t *testing.T, messages []T, err error)
 
 func MongoMockInsertSuccess[T any](
 	t *testing.T,
@@ -57,5 +57,47 @@ func MongoMockInsertFailDuplicatedKey[T any](
 		err := repo.Insert(data)
 
 		assertFunc(t, err)
+	})
+}
+
+func MongoMockMessagesFindByTopicSuccess(
+	t *testing.T,
+	label string,
+	expectedData []model.Message,
+	topic string,
+	repo Repository[model.Message],
+	overrideCollection OverrideCollection,
+	assertFunc AssertFind[model.Message],
+) {
+	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+
+	defer mt.Close()
+
+	mt.Run(label, func(mt *mtest.T) {
+		overrideCollection(mt.Coll)
+
+		responses := make([]bson.D, len(expectedData)+1)
+		for i, data := range expectedData {
+
+			bsonData := bson.D{
+				{Key: "_id", Value: data.Id},
+				{Key: "topic", Value: data.Topic},
+				{Key: "timestamp", Value: data.Timestamp},
+				{Key: "content", Value: data.Content},
+			}
+			if i == 0 {
+				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.FirstBatch, bsonData)
+				responses[i] = response
+			} else {
+				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.NextBatch, bsonData)
+				responses[i] = response
+			}
+
+		}
+		//kill cursor
+		responses[len(expectedData)] = mtest.CreateCursorResponse(0, "foo.bar", mtest.NextBatch)
+		mt.AddMockResponses(responses...)
+		messages, err := repo.FindByTopic(topic)
+		assertFunc(t, messages, err)
 	})
 }
