@@ -1,34 +1,23 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"time"
+	"os"
 
-	"github.com/juliocnsouzadev/kafka-ish/storage"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/juliocnsouzadev/kafka-ish/producer"
+	"github.com/juliocnsouzadev/kafka-ish/settings"
 )
 
-var client *mongo.Client
+var prod producer.Producer
 
 func main() {
-	mongoClient, err := storage.ConnectToMongoDB()
-	if err != nil {
-		log.Println(fmt.Errorf("error connecting to mongoDB: %w", err))
-		log.Panic(err)
-	}
-	client = mongoClient
+	storageType := os.Args[1]
 
-	// create context with timeout to be able to disconnect from mongoDB
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
-	defer cancel()
+	prod = producer.NeProducer(settings.Settings{
+		StorageType: settings.StorageType(storageType),
+	})
 
 	defer func() {
-		if err := client.Disconnect(ctx); err != nil {
-			log.Panic(err)
-		}
+		prod.Cancel()
 	}()
 
 }
