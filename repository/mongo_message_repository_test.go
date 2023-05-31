@@ -42,7 +42,7 @@ func TestFindByTopic_MongoDB_Success(t *testing.T) {
 	messageTwo := getMessage()
 	expectedMessages := []model.Message{messageOne, messageTwo}
 
-	topic := "topic"
+	topic := "tests_topic"
 
 	repo, overrideCollectionFunc := getMongoRepoAndCollection()
 
