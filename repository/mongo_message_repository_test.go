@@ -2,9 +2,7 @@ package repository
 
 import (
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/juliocnsouzadev/kafka-ish/model"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -60,17 +58,6 @@ func TestFindByTopic_MongoDB_Success(t *testing.T) {
 
 	// exec
 	MongoMockMessagesFindByTopicSuccess(t, "find messages by topic", expectedMessages, topic, repo, overrideCollectionFunc, assertFindByTopicFunc)
-}
-
-func getMessage() model.Message {
-	id := uuid.New().String()
-	message := model.Message{
-		Id:        id,
-		Topic:     "topic",
-		Timestamp: time.Now(),
-		Content:   "content",
-	}
-	return message
 }
 
 func getMongoRepoAndCollection() (*MongoMessageRepository[model.Message], OverrideCollection) {
