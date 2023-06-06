@@ -14,6 +14,8 @@ func NeProducer(config settings.Settings) Producer {
 	switch config.StorageType {
 	case settings.MongoDB:
 		return NewMongoProducer()
+	case settings.FileStore:
+		return NewFileStoreProducer()
 	default:
 		return nil
 	}

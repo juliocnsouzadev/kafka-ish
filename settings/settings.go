@@ -3,7 +3,8 @@ package settings
 type StorageType string
 
 const (
-	MongoDB StorageType = "MongoDB"
+	MongoDB   StorageType = "mongodb"
+	FileStore StorageType = "filestore"
 )
 
 type Settings struct {
