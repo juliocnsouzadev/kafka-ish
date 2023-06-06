@@ -6,17 +6,14 @@ import (
 
 func TestConnectToMongoDB(t *testing.T) {
 
-	// Call the function being tested
-	client, err := ConnectToMongoDB()
+	given, when, then := NewMongoConnTestStage(t)
 
-	// Check for errors
-	if err != nil {
-		t.Errorf("ConnectToMongoDB returned an error: %v", err)
-	}
+	given.user_and_password_enviroment_variables_are_set()
 
-	// Check that the client is not nil
-	if client == nil {
-		t.Errorf("ConnectToMongoDB returned a nil client")
-	}
+	when.connect_to_mongodb()
+
+	then.no_errors_happen().
+		and().
+		client_is_not_nil()
 
 }
