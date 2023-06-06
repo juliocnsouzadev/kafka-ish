@@ -1,68 +1,27 @@
 package repository
 
 import (
-	"fmt"
-	"os"
 	"testing"
-
-	"github.com/juliocnsouzadev/kafka-ish/model"
-	"github.com/stretchr/testify/require"
 )
 
 func TestInsert_File_Success(t *testing.T) {
-	//given
-	message := getMessage()
-	repo := NewFileMessageRepository()
 
-	defer cleanup(repo.storagePath, message.Topic)
+	given, when, then := NewFileMessageTestStage(t)
 
-	// exec
-	err := repo.Insert(message)
+	given.a_message()
 
-	// assert
-	require.Nil(t, err)
+	when.the_message_is_created()
+
+	then.no_errors_happen()
 }
 
 func TestFindByTopic_File_Success(t *testing.T) {
-	//given
-	topic := "tests_topic"
+	given, when, then := NewFileMessageTestStage(t)
 
-	repo := NewFileMessageRepository()
-	defer cleanup(repo.storagePath, topic)
+	given.some_existing_messages_in_the_topic("tests_topic")
 
-	expectedMessages := createMessages(repo)
+	when.find_messages_for_topic("tests_topic")
 
-	// exec
-	messages, err := repo.FindByTopic(topic)
-
-	// assert
-	require.Nil(t, err)
-	require.Equal(t, len(expectedMessages), len(messages))
-	for i, msg := range messages {
-		require.Equal(t, expectedMessages[i].Id, msg.Id)
-		require.Equal(t, expectedMessages[i].Topic, msg.Topic)
-		require.Equal(t, expectedMessages[i].Content, msg.Content)
-	}
-
-}
-
-func createMessages(repo *FileMessageRepository[model.Message]) []model.Message {
-	messageOne := getMessage()
-	messageTwo := getMessage()
-	expectedMessages := []model.Message{messageOne, messageTwo}
-	for _, msg := range expectedMessages {
-		err := repo.Insert(msg)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return expectedMessages
-}
-
-func cleanup(storagePath, topic string) {
-	filePath := fmt.Sprintf("%s/%s.topic", storagePath, topic)
-	e := os.Remove(filePath)
-	if e != nil {
-		fmt.Printf("error removing file %s\n", filePath)
-	}
+	then.no_errors_happen().and().
+		found_messages_matches_existing_messages()
 }
