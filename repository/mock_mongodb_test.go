@@ -3,93 +3,87 @@ package repository
 import (
 	"testing"
 
-	"github.com/juliocnsouzadev/kafka-ish/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/integration/mtest"
 )
 
+const (
+	ErrorOutputType   OutputType = "error"
+	SuccessOutputType OutputType = "success"
+)
+
 type OverrideCollection func(*mongo.Collection)
 
-type AssertInsert func(t *testing.T, err error)
-type AssertFind[T any] func(t *testing.T, messages []T, err error)
+type OutputType string
 
-func MongoMockInsertSuccess[T any](
-	t *testing.T,
-	label string,
-	data T,
-	repo Repository[T],
-	overrideCollection OverrideCollection,
-	assertFunc AssertInsert,
-) {
-	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+type MongoMock[T any] struct {
+	repo               Repository[T]
+	mt                 *mtest.T
+	overrideCollection OverrideCollection
+	outputs            map[string]map[OutputType]any
+}
 
-	defer mt.Close()
+func NewMongoMock[T any](t *testing.T, repo Repository[T], overrideCollection OverrideCollection) *MongoMock[T] {
+	return &MongoMock[T]{
+		repo:               repo,
+		overrideCollection: overrideCollection,
+		mt:                 mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock)),
+		outputs:            make(map[string]map[OutputType]any),
+	}
+}
 
-	mt.Run(label, func(mt *mtest.T) {
-		overrideCollection(mt.Coll)
+func (this *MongoMock[T]) GetOutput(label string, outpType OutputType) any {
+	if data, ok := this.outputs[label]; ok {
+		return data[outpType]
+	}
+	return nil
+}
+
+func (this *MongoMock[T]) InsertSuccess(label string, data T) {
+
+	defer this.mt.Close()
+
+	this.mt.Run(label, func(mt *mtest.T) {
+		this.overrideCollection(mt.Coll)
 		mt.AddMockResponses(mtest.CreateSuccessResponse())
-		err := repo.Insert(data)
-
-		assertFunc(t, err)
+		err := this.repo.Insert(data)
+		this.outputs[label] = make(map[OutputType]any)
+		this.outputs[label][ErrorOutputType] = err
 	})
 }
 
-func MongoMockInsertFailDuplicatedKey[T any](
-	t *testing.T,
-	label string,
-	data T,
-	repo Repository[T],
-	overrideCollection OverrideCollection,
-	assertFunc AssertInsert,
-) {
-	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+func (this *MongoMock[T]) InsertFailDuplicatedKey(label string, data T) {
 
-	defer mt.Close()
+	defer this.mt.Close()
 
-	mt.Run(label, func(mt *mtest.T) {
-		overrideCollection(mt.Coll)
+	this.mt.Run(label, func(mt *mtest.T) {
+		this.overrideCollection(mt.Coll)
 		mt.AddMockResponses(mtest.CreateWriteErrorsResponse(mtest.WriteError{
 			Index:   1,
 			Code:    11000,
 			Message: "duplicate key error",
 		}))
-		err := repo.Insert(data)
-
-		assertFunc(t, err)
+		err := this.repo.Insert(data)
+		this.outputs[label] = make(map[OutputType]any)
+		this.outputs[label][ErrorOutputType] = err
 	})
 }
 
-func MongoMockMessagesFindByTopicSuccess(
-	t *testing.T,
-	label string,
-	expectedData []model.Message,
-	topic string,
-	repo Repository[model.Message],
-	overrideCollection OverrideCollection,
-	assertFunc AssertFind[model.Message],
-) {
-	mt := mtest.New(t, mtest.NewOptions().ClientType(mtest.Mock))
+func (this *MongoMock[T]) FindByTopicSuccess(label string, expectedData []bson.D, topic string) {
+	defer this.mt.Close()
 
-	defer mt.Close()
-
-	mt.Run(label, func(mt *mtest.T) {
-		overrideCollection(mt.Coll)
+	this.mt.Run(label, func(mt *mtest.T) {
+		this.overrideCollection(mt.Coll)
 
 		responses := make([]bson.D, len(expectedData)+1)
 		for i, data := range expectedData {
 
-			bsonData := bson.D{
-				{Key: "_id", Value: data.Id},
-				{Key: "topic", Value: data.Topic},
-				{Key: "timestamp", Value: data.Timestamp},
-				{Key: "content", Value: data.Content},
-			}
 			if i == 0 {
-				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.FirstBatch, bsonData)
+				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.FirstBatch, data)
 				responses[i] = response
 			} else {
-				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.NextBatch, bsonData)
+				response := mtest.CreateCursorResponse(1, "foo.bar", mtest.NextBatch, data)
 				responses[i] = response
 			}
 
@@ -97,7 +91,9 @@ func MongoMockMessagesFindByTopicSuccess(
 		//kill cursor
 		responses[len(expectedData)] = mtest.CreateCursorResponse(0, "foo.bar", mtest.NextBatch)
 		mt.AddMockResponses(responses...)
-		messages, err := repo.FindByTopic(topic)
-		assertFunc(t, messages, err)
+		messages, err := this.repo.FindByTopic(topic)
+		this.outputs[label] = make(map[OutputType]any)
+		this.outputs[label][SuccessOutputType] = messages
+		this.outputs[label][ErrorOutputType] = err
 	})
 }
