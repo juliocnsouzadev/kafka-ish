@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/juliocnsouzadev/kafka-ish/model"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -22,11 +22,9 @@ type MongoMessageTestStage struct {
 	t                   *testing.T
 	createdMessages     []model.Message
 	expectedMessageType ExpectedMessageType
-	foundMessages       []model.Message
-	repo                *MongoMessageRepository[model.Message]
-	overrideCollection  OverrideCollection
 	topic               string
-	err                 error
+	testLabel           string
+	mock                *MongoMock[model.Message]
 }
 
 func NewMongoMessageTestStage(t *testing.T) (*MongoMessageTestStage, *MongoMessageTestStage, *MongoMessageTestStage) {
@@ -34,7 +32,7 @@ func NewMongoMessageTestStage(t *testing.T) (*MongoMessageTestStage, *MongoMessa
 	overrideCollection := func(collection *mongo.Collection) {
 		repo.collection = collection
 	}
-	stage := &MongoMessageTestStage{t: t, repo: repo, overrideCollection: overrideCollection}
+	stage := &MongoMessageTestStage{t: t, mock: NewMongoMock[model.Message](t, repo, overrideCollection)}
 	return stage, stage, stage
 }
 
@@ -51,39 +49,37 @@ func (s *MongoMessageTestStage) a_message(expected ExpectedMessageType) *MongoMe
 func (s *MongoMessageTestStage) the_message_is_created() *MongoMessageTestStage {
 	switch s.expectedMessageType {
 	case ExpectedMessageOK:
-		assertInsertFunc := func(t *testing.T, err error) {
-			require.Nil(t, err)
-		}
 		for _, msg := range s.createdMessages {
-			MongoMockInsertSuccess[model.Message](s.t, "insert message", msg, s.repo, s.overrideCollection, assertInsertFunc)
+			s.testLabel = "insert message"
+			s.mock.InsertSuccess(s.testLabel, msg)
 		}
-		s.err = nil
 		break
 	case ExpectedMessageDuplicated:
-		assertInsertFunc := func(t *testing.T, err error) {
-			require.NotNil(t, err)
-			require.True(t, strings.Contains(err.Error(), duplicatedKeyErrorMessage))
-		}
 		for _, msg := range s.createdMessages {
-			MongoMockInsertFailDuplicatedKey[model.Message](s.t, "fail duplicated key", msg, s.repo, s.overrideCollection, assertInsertFunc)
+			s.testLabel = "fail duplicated key"
+			s.mock.InsertFailDuplicatedKey(s.testLabel, msg)
 		}
-		s.err = errors.Errorf("%s", duplicatedKeyErrorMessage)
 		break
 	default:
 		panic("invalid expected message type")
 	}
-
 	return s
 }
 
 func (s *MongoMessageTestStage) no_errors_happen() *MongoMessageTestStage {
-	require.Nil(s.t, s.err)
+	err := s.mock.GetOutput(s.testLabel, ErrorOutputType)
+	require.Nil(s.t, err, s.testLabel)
 	return s
 }
 
 func (s *MongoMessageTestStage) fail_duplicated_key() *MongoMessageTestStage {
-	require.NotNil(s.t, s.err)
-	require.True(s.t, strings.Contains(s.err.Error(), duplicatedKeyErrorMessage))
+	errRaw := s.mock.GetOutput(s.testLabel, ErrorOutputType)
+	require.NotNil(s.t, errRaw, s.testLabel)
+
+	err, ok := errRaw.(error)
+	require.True(s.t, ok, s.testLabel)
+
+	require.True(s.t, strings.Contains(err.Error(), duplicatedKeyErrorMessage), s.testLabel)
 	return s
 }
 
@@ -97,29 +93,36 @@ func (s *MongoMessageTestStage) some_existing_messages_in_the_topic(topic string
 }
 
 func (s *MongoMessageTestStage) find_messages_for_topic(topic string) *MongoMessageTestStage {
-	assertFindByTopicFunc := func(t *testing.T, messages []model.Message, err error) {
-		require.Nil(t, err)
-		require.Equal(t, len(s.createdMessages), len(messages))
-		for i, msg := range messages {
-			require.Equal(t, s.createdMessages[i].Id, msg.Id)
-			require.Equal(t, s.createdMessages[i].Topic, msg.Topic)
-			require.Equal(t, s.createdMessages[i].Content, msg.Content)
+	s.testLabel = "find messages by topic"
+	mockedData := make([]bson.D, len(s.createdMessages))
+	for i, msg := range s.createdMessages {
+		bsonData := bson.D{
+			{Key: "_id", Value: msg.Id},
+			{Key: "topic", Value: msg.Topic},
+			{Key: "timestamp", Value: msg.Timestamp},
+			{Key: "content", Value: msg.Content},
 		}
+		mockedData[i] = bsonData
 	}
-
-	// exec
-	MongoMockMessagesFindByTopicSuccess(s.t, "find messages by topic", s.createdMessages, topic, s.repo, s.overrideCollection, assertFindByTopicFunc)
-	s.foundMessages = s.createdMessages
+	s.mock.FindByTopicSuccess(s.testLabel, mockedData, topic)
 	return s
 }
 
 func (s *MongoMessageTestStage) found_messages_matches_existing_messages() *MongoMessageTestStage {
+	err := s.mock.GetOutput(s.testLabel, ErrorOutputType)
+	require.Nil(s.t, err, s.testLabel)
 
-	require.Equal(s.t, len(s.createdMessages), len(s.foundMessages))
-	for i, msg := range s.foundMessages {
-		require.Equal(s.t, s.createdMessages[i].Id, msg.Id)
-		require.Equal(s.t, s.createdMessages[i].Topic, msg.Topic)
-		require.Equal(s.t, s.createdMessages[i].Content, msg.Content)
+	foundMessagesRaw := s.mock.GetOutput(s.testLabel, SuccessOutputType)
+	require.NotNil(s.t, foundMessagesRaw, s.testLabel)
+
+	foundMessages, ok := foundMessagesRaw.([]model.Message)
+	require.True(s.t, ok, s.testLabel)
+
+	require.Equal(s.t, len(s.createdMessages), len(foundMessages))
+	for i, msg := range foundMessages {
+		require.Equal(s.t, s.createdMessages[i].Id, msg.Id, s.testLabel)
+		require.Equal(s.t, s.createdMessages[i].Topic, msg.Topic, s.testLabel)
+		require.Equal(s.t, s.createdMessages[i].Content, msg.Content, s.testLabel)
 	}
 	return s
 }
