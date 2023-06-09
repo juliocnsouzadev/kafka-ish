@@ -10,7 +10,7 @@ type Producer interface {
 	Cancel()
 }
 
-func NeProducer(config settings.Settings) Producer {
+func NewProducer(config settings.Settings) Producer {
 	switch config.StorageType {
 	case settings.MongoDB:
 		return NewMongoProducer()
