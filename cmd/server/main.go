@@ -19,7 +19,7 @@ func main() {
 		storageType = string(settings.FileStore)
 	}
 
-	prod = producer.NeProducer(settings.Settings{
+	prod = producer.NewProducer(settings.Settings{
 		StorageType: settings.StorageType(strings.ToLower(storageType)),
 	})
 
