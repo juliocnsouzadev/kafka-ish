@@ -9,4 +9,5 @@ const (
 
 type Settings struct {
 	StorageType
+	TcpPort string
 }
