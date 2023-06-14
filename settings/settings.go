@@ -10,4 +10,5 @@ const (
 type Settings struct {
 	StorageType
 	TcpPort string
+	WebPort string
 }

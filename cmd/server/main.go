@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -17,26 +18,47 @@ func main() {
 	config := settings.Settings{
 		StorageType: getStorageType(),
 		TcpPort:     getTcpPort(),
+		WebPort:     getWebPort(),
 	}
 
+	producer := producer.NewProducer(config)
+
+	//bulding tcp server
+	tcpServer, err := buildTcpServer(config, producer)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer tcpServer.Cancel()
+	tcpServer.Start()
+
+	//build http server
+	httpServer, err := buildHttpServer(config, producer)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer httpServer.Cancel()
+	httpServer.Start()
+
+}
+
+func buildHttpServer(config settings.Settings, producer producer.Producer) (*server.HttpServer, error) {
+	httpServer := &http.Server{
+		Addr: fmt.Sprintf(":%s", config.WebPort),
+	}
+	done := make(chan bool)
+	return server.NewHttpServer(producer, httpServer, done)
+}
+
+func buildTcpServer(config settings.Settings, producer producer.Producer) (*server.TcpServer, error) {
+	var err error
 	listener, err := server.NewDeafultTcpListener(config)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return nil, err
 	}
-	defer listener.Close()
-
 	done := make(chan bool)
-	producer := producer.NewProducer(config)
-	tcpServer, err := server.NewTCPServer(producer, listener, done)
-
-	defer tcpServer.Cancel()
-
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	tcpServer.Start()
+	return server.NewTCPServer(producer, listener, done)
 }
 
 func getTcpPort() string {
@@ -55,4 +77,12 @@ func getStorageType() settings.StorageType {
 		storageType = string(settings.FileStore)
 	}
 	return settings.StorageType(strings.ToLower(storageType))
+}
+
+func getWebPort() string {
+	port := os.Getenv("WEB_PORT")
+	if port == "" {
+		port = "80"
+	}
+	return port
 }

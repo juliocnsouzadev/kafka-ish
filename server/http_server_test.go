@@ -4,14 +4,14 @@ import (
 	"testing"
 )
 
-func TestTcpServerStart(t *testing.T) {
+func TestHttpServerStart(t *testing.T) {
 
-	given, when, then := NewTcpServerTestStage(t)
+	given, when, then := NewHttpServerTestStage(t)
 
 	given.two_publish_commands().and().
-		a_tcp_server()
+		a_http_server()
 
-	when.tcp_server_starts()
+	when.http_server_starts()
 
 	then.no_erros_ocurr().and().
 		interactions_are_correct()
