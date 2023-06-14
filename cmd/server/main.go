@@ -19,7 +19,16 @@ func main() {
 		TcpPort:     getTcpPort(),
 	}
 
-	tcpServer, err := server.NewTCPServer(config)
+	listener, err := server.NewDeafultTcpListener(config)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer listener.Close()
+
+	done := make(chan bool)
+	producer := producer.NewProducer(config)
+	tcpServer, err := server.NewTCPServer(producer, listener, done)
 
 	defer tcpServer.Cancel()
 
