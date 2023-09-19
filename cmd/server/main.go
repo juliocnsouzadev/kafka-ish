@@ -11,8 +11,6 @@ import (
 	"github.com/juliocnsouzadev/kafka-ish/settings"
 )
 
-var prod producer.Producer
-
 func main() {
 
 	config := settings.Settings{
@@ -21,10 +19,10 @@ func main() {
 		WebPort:     getWebPort(),
 	}
 
-	producer := producer.NewProducer(config)
+	producer_ := producer.NewProducer(config)
 
-	//bulding tcp server
-	tcpServer, err := buildTcpServer(config, producer)
+	//building tcp server
+	tcpServer, err := buildTcpServer(config, producer_)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -33,7 +31,7 @@ func main() {
 	tcpServer.Start()
 
 	//build http server
-	httpServer, err := buildHttpServer(config, producer)
+	httpServer, err := buildHttpServer(config, producer_)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -47,13 +45,12 @@ func buildHttpServer(config settings.Settings, producer producer.Producer) (*ser
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf(":%s", config.WebPort),
 	}
-	done := make(chan bool)
-	return server.NewHttpServer(producer, httpServer, done)
+	return server.NewHttpServer(producer, httpServer)
 }
 
 func buildTcpServer(config settings.Settings, producer producer.Producer) (*server.TcpServer, error) {
 	var err error
-	listener, err := server.NewDeafultTcpListener(config)
+	listener, err := server.NewDefaultTcpListener(config)
 	if err != nil {
 		return nil, err
 	}
@@ -64,18 +61,18 @@ func buildTcpServer(config settings.Settings, producer producer.Producer) (*serv
 func getTcpPort() string {
 	port := os.Getenv("TCP_PORT")
 	if port == "" {
-		port = "9001"
+		port = "9002"
 	}
 	return port
 }
 
 func getStorageType() settings.StorageType {
-	storageType := os.Args[1]
+	storageType := string(settings.FileStore)
 
-	if storageType == "" {
-		fmt.Println("storage type not informed switchin to filestore")
-		storageType = string(settings.FileStore)
+	if len(os.Args) > 1 {
+		storageType = os.Args[1]
 	}
+
 	return settings.StorageType(strings.ToLower(storageType))
 }
 
