@@ -4,13 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/juliocnsouzadev/kafka-ish/model"
+	"github.com/juliocnsouzadev/kafka-ish/producer"
 	"io"
 	"log"
 	"strings"
 	"time"
-
-	"github.com/juliocnsouzadev/kafka-ish/model"
-	"github.com/juliocnsouzadev/kafka-ish/producer"
 )
 
 type TcpServer struct {
@@ -62,50 +61,52 @@ func (t *TcpServer) close(command Command) error {
 
 func (t *TcpServer) Cancel() {
 	close(t.commands)
+
 	t.prod.Cancel()
-	t.listener.Close()
+	err := t.listener.Close()
+	if err != nil {
+		log.Printf("error closing listener %v", err)
+		return
+	}
+
 }
 
 func (t *TcpServer) Start() {
+	go func() {
+		for {
+			log.Println("waiting for connection...")
 
-	defer t.Cancel()
+			deadline := time.Now().Add(1 * time.Second)
+			conn, err := t.listener.Accept(deadline)
+			if err != nil {
+				if err.IsTimeout() {
+					continue
+				}
+				log.Printf("unable to accept tcp connection: %s\n", err)
+				continue
+			}
 
-	for {
-		fmt.Println("waiting for connection...")
+			if err := conn.SetKeepAlive(true); err != nil {
+				log.Printf("unable to set keep alive: %s\n", err)
+			}
 
-		deadline := time.Now().Add(200 * time.Millisecond)
-		conn, err := t.listener.Accept(deadline)
-		if err != nil {
-			log.Printf("unable to accept tcp connection: %s\n", err)
-			continue
+			go t.readCommands(conn)
+
+			go t.handleCommands()
+
+			if <-t.done {
+				fmt.Println("done")
+				return
+			}
 		}
+	}()
 
-		if err := conn.SetKeepAlive(true); err != nil {
-			log.Printf("unable to set keep alive: %s\n", err)
-		}
-
-		go t.readCommands(conn)
-
-		go t.handleCommands()
-
-		select {
-		case <-t.done:
-			fmt.Println("done")
-			return
-		}
-	}
 }
 
 func (t *TcpServer) readCommands(conn InternalReader) {
-
-	defer conn.Close()
-	defer log.Printf("connection closed: %v\n", conn)
-
 	reader := bufio.NewReader(conn.Reader())
 	for {
 		line, _, err := reader.ReadLine()
-
-		fmt.Printf("line: %s\n", line)
 
 		command := Command{}
 		if err == io.EOF {
